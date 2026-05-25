@@ -340,6 +340,8 @@ export default function GenerationDetail() {
         targetRef={zhRef}
         chineseFull={gen.content || ''}
         englishFull={gen.english_content || ''}
+        chineseTitle={gen.title}
+        englishTitle={gen.english_title || gen.title}
         taskType={gen.task_type}
         industryKeywords={gen.industry_keywords}
         onReplace={(nextEnglish) => setEnglishContent(gen.id, nextEnglish, gen.english_title)}
