@@ -48,7 +48,7 @@ export const boardMenu = [
           { id: 'r-gen-his-2', title: '编辑单篇内容（标题 + 正文）', status: 'done', hint: '/generate/:id 内联编辑' },
           { id: 'r-gen-his-3', title: '删除单篇内容', status: 'done' },
           { id: 'r-gen-his-4', title: '一键复制正文', status: 'done' },
-          { id: 'r-gen-his-5', title: '导出 Markdown / PDF', status: 'planned' },
+          { id: 'r-gen-his-5', title: '导出 Markdown / PDF', status: 'done', hint: '/generate/:id 详情页已接 downloadMd / downloadPdf' },
         ],
       },
     ],
@@ -65,9 +65,11 @@ export const boardMenu = [
         id: 'user-system.auth',
         label: '登录与账号',
         requirements: [
-          { id: 'r-usr-auth-1', title: '邮箱 + 密码注册 / 登录', status: 'planned' },
-          { id: 'r-usr-auth-2', title: 'session / token 维护', status: 'planned' },
-          { id: 'r-usr-auth-3', title: '角色字段：admin / group manager / user', status: 'planned' },
+          { id: 'r-usr-auth-1', title: '邮箱 + 密码注册 / 登录', status: 'done', hint: '/register · /login · /verify-email 已接 Supabase Auth' },
+          { id: 'r-usr-auth-2', title: 'session / token 维护', status: 'done', hint: 'useAuth.jsx + Supabase session 持久化' },
+          { id: 'r-usr-auth-3', title: '角色字段：admin / group manager / user', status: 'planned', hint: 'profiles 表当前仅 id/email/invite_code/invited_by/invited_count，无 role' },
+          { id: 'r-usr-auth-4', title: '邀请码注册 + 邀请关系链', status: 'done', hint: 'profiles.invite_code + invitations 表 · 注册需填邀请码' },
+          { id: 'r-usr-auth-5', title: '个人中心（/profile）', status: 'done' },
         ],
       },
       {
@@ -75,7 +77,7 @@ export const boardMenu = [
         label: '共享 API 余量',
         requirements: [
           { id: 'r-usr-q-1', title: '后端集中持有公司 DeepSeek key，用户不再自填', status: 'done', hint: 'server/index.js 通过 .env 持 key，前端设置抽屉已不再录入' },
-          { id: 'r-usr-q-2', title: '暂不设单人调用上限', status: 'planned' },
+          { id: 'r-usr-q-2', title: '暂不设单人调用上限', status: 'done', hint: '后端仅按 IP 做每分钟限流，无 per-user 限额' },
         ],
       },
       {

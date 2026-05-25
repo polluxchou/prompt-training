@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { splitToCards, FORM_META } from '../lib/cardSplitter.js'
 import {
   downloadCardImage,
@@ -292,36 +292,26 @@ export default function CardsExportDrawer({ open, onClose, title, content }) {
 
             {/* 底部下载条 */}
             <div className="flex flex-wrap items-center gap-2 border-t border-clay-500/10 bg-cream-50 px-7 py-4">
-              <button
-                onClick={() => handleDownloadOne('png')}
+              <ActionMenu
+                label="⬇ 当前"
+                primary
                 disabled={!cards.length || !!busy}
-                className="rounded-full bg-clay-500 px-4 py-2 text-sm font-medium text-cream-50 shadow-warm transition hover:bg-clay-600 disabled:opacity-50"
-              >⬇ 下载当前 PNG</button>
-              <button
-                onClick={() => handleDownloadOne('jpg')}
-                disabled={!cards.length || !!busy}
-                className="rounded-full border border-clay-500/30 bg-cream-100 px-4 py-2 text-sm font-medium text-clay-700 transition hover:bg-clay-500/10 disabled:opacity-50"
-              >⬇ 当前 JPG</button>
+                items={[
+                  { id: 'png',  icon: '🖼', label: 'PNG 图片', hint: '无损位图', onClick: () => handleDownloadOne('png') },
+                  { id: 'jpg',  icon: '🏞', label: 'JPG 图片', hint: '压缩位图，体积小', onClick: () => handleDownloadOne('jpg') },
+                  { id: 'copy', icon: '📋', label: '复制到剪贴板', hint: '可直接粘贴到聊天 / 编辑器', onClick: handleCopy },
+                ]}
+              />
               {form !== 'long' && cards.length > 1 && (
-                <>
-                  <span className="mx-1 text-ink-700/30">|</span>
-                  <button
-                    onClick={() => handleDownloadAll('png')}
-                    disabled={!!busy}
-                    className="rounded-full border border-clay-500/30 bg-cream-100 px-4 py-2 text-sm font-medium text-clay-700 transition hover:bg-clay-500/10 disabled:opacity-50"
-                  >⬇ 全部 PNG（{cards.length}）</button>
-                  <button
-                    onClick={() => handleDownloadAll('jpg')}
-                    disabled={!!busy}
-                    className="rounded-full border border-clay-500/30 bg-cream-100 px-4 py-2 text-sm font-medium text-clay-700 transition hover:bg-clay-500/10 disabled:opacity-50"
-                  >⬇ 全部 JPG</button>
-                </>
+                <ActionMenu
+                  label={`⬇ 全部（${cards.length}）`}
+                  disabled={!!busy}
+                  items={[
+                    { id: 'all-png', icon: '🖼', label: 'PNG · 批量', hint: `顺序下载 ${cards.length} 张`, onClick: () => handleDownloadAll('png') },
+                    { id: 'all-jpg', icon: '🏞', label: 'JPG · 批量', hint: '体积更小', onClick: () => handleDownloadAll('jpg') },
+                  ]}
+                />
               )}
-              <button
-                onClick={handleCopy}
-                disabled={!cards.length || !!busy}
-                className="rounded-full border border-clay-500/30 bg-cream-100 px-4 py-2 text-sm font-medium text-clay-700 transition hover:bg-clay-500/10 disabled:opacity-50"
-              >📋 复制当前图</button>
               {busy && (
                 <span className="font-mono text-xs text-ink-700/70">
                   {busy.startsWith('download-all') ? '批量导出中...' : '处理中...'}
@@ -357,7 +347,25 @@ function PreviewScaled({ card, form }) {
   const meta = FORM_META[form]
   const previewMaxW = form === 'long' ? 540 : form === 'vertical' ? 320 : 420
   const scale = previewMaxW / meta.width
-  const h = meta.height ? meta.height * scale : 'auto'
+  const innerRef = useRef(null)
+  // 长图高度未知，scale transform 不影响布局，需测量后回写父高度
+  const [autoH, setAutoH] = useState(null)
+
+  useLayoutEffect(() => {
+    if (meta.height) {
+      setAutoH(null)
+      return
+    }
+    const el = innerRef.current
+    if (!el) return
+    const measure = () => setAutoH(el.offsetHeight * scale)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [meta.height, scale, card])
+
+  const h = meta.height ? meta.height * scale : (autoH ?? 'auto')
 
   return (
     <div
@@ -370,9 +378,72 @@ function PreviewScaled({ card, form }) {
         boxShadow: '0 10px 30px -10px rgba(217,119,87,.35)',
       }}
     >
-      <div style={{ width: meta.width, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+      <div
+        ref={innerRef}
+        style={{ width: meta.width, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+      >
         <CardBody card={card} form={form} />
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────
+//   下载/操作 下拉菜单
+// ─────────────────────────────────────────────────────────
+function ActionMenu({ label, items, primary = false, disabled = false }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    const onKey = (e) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        className={`rounded-full px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${
+          primary
+            ? 'bg-clay-500 text-cream-50 shadow-warm hover:bg-clay-600'
+            : 'border border-clay-500/30 bg-cream-100 text-clay-700 hover:bg-clay-500/10'
+        }`}
+      >
+        {label} ▾
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-60 overflow-hidden rounded-2xl border border-clay-500/15 bg-cream-50 shadow-warm">
+          <ul className="py-1">
+            {items.map((it) => (
+              <li key={it.id}>
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); it.onClick() }}
+                  className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-ink-800 transition hover:bg-clay-500/10"
+                >
+                  <span className="mt-0.5 text-base">{it.icon}</span>
+                  <span className="flex-1">
+                    <span className="font-semibold">{it.label}</span>
+                    {it.hint && <p className="text-[11px] text-ink-700/60">{it.hint}</p>}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
@@ -403,17 +474,9 @@ function CoverCard({ card, form }) {
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
       }}
     >
-      <div>
-        <div style={{
-          fontSize: 26, letterSpacing: 6, color: '#A0522D',
-          fontWeight: 600, fontFamily: 'ui-monospace,monospace',
-        }}>PROMPT TRAINING</div>
-        <div style={{ marginTop: 14, height: 2, width: 80, background: 'rgba(160,82,45,.4)' }} />
-      </div>
-
       <div>
         <h1 style={{
           fontSize: isVertical ? 110 : 84,
@@ -433,15 +496,6 @@ function CoverCard({ card, form }) {
             fontWeight: 400,
           }}>{card.subtitle}</p>
         )}
-      </div>
-
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        fontSize: 22, color: '#A0522D', fontFamily: 'ui-monospace,monospace',
-      }}>
-        <span>↪ swipe</span>
-        <span>·</span>
-        <span>generated · with AI</span>
       </div>
     </div>
   )
@@ -472,11 +526,10 @@ function ContentCard({ card, form }) {
       }}
     >
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         fontSize: 20, fontFamily: 'ui-monospace,monospace',
         color: '#A0522D', letterSpacing: 3,
       }}>
-        <span>PROMPT · TRAINING</span>
         <span>
           {String(card.page).padStart(2, '0')} / {String(card.total).padStart(2, '0')}
         </span>
@@ -492,11 +545,6 @@ function ContentCard({ card, form }) {
           <RenderBlock key={i} block={b} baseFont={baseFont} />
         ))}
       </div>
-
-      <div style={{
-        marginTop: 24, fontSize: 18, fontFamily: 'ui-monospace,monospace',
-        color: 'rgba(92,74,58,.55)',
-      }}>— generated with AI</div>
     </div>
   )
 }
@@ -516,14 +564,10 @@ function LongCard({ card }) {
         boxSizing: 'border-box',
       }}
     >
-      <div style={{
-        fontSize: 24, fontFamily: 'ui-monospace,monospace',
-        color: '#A0522D', letterSpacing: 4,
-      }}>PROMPT · TRAINING</div>
       <h1 style={{
         fontSize: 68, fontWeight: 800,
         fontFamily: '"Playfair Display","Noto Serif SC",serif',
-        lineHeight: 1.2, margin: '20px 0 16px',
+        lineHeight: 1.2, margin: '0 0 16px',
       }}>{card.title || '未命名'}</h1>
       {card.subtitle && (
         <p style={{ fontSize: 28, color: '#5C4A3A', lineHeight: 1.6, margin: '0 0 40px' }}>
@@ -537,12 +581,6 @@ function LongCard({ card }) {
           <RenderBlock key={i} block={b} baseFont={32} />
         ))}
       </div>
-
-      <div style={{
-        marginTop: 70, textAlign: 'center',
-        fontSize: 20, fontFamily: 'ui-monospace,monospace',
-        color: 'rgba(92,74,58,.55)',
-      }}>— generated with AI ·</div>
     </div>
   )
 }
