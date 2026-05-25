@@ -174,6 +174,71 @@ export async function downloadJpg({ element, title }) {
   )
 }
 
+// ── 卡片（图文）专用 ────────────────────────────────────
+// 与 renderElement 不同：卡片节点已经是一张完整的"成品图"，无须加临时标题/边距，
+// 直接对节点本身截图（保留 9:16 / 3:4 等真实比例）。
+
+async function renderCardNode(node, scale = 2) {
+  if (!node) throw new Error('卡片节点不存在')
+  return html2canvas(node, {
+    scale,
+    backgroundColor: null,
+    useCORS: true,
+    logging: false,
+    windowWidth: Math.max(node.scrollWidth, node.clientWidth),
+    windowHeight: Math.max(node.scrollHeight, node.clientHeight),
+  })
+}
+
+function canvasToBlob(canvas, type = 'image/png', quality) {
+  return new Promise((resolve) =>
+    canvas.toBlob((blob) => resolve(blob), type, quality),
+  )
+}
+
+export async function downloadCardImage({ node, title, index, total, format = 'png' }) {
+  const canvas = await renderCardNode(node, 2)
+  const type = format === 'jpg' ? 'image/jpeg' : 'image/png'
+  const ext  = format === 'jpg' ? 'jpg' : 'png'
+  const blob = await canvasToBlob(canvas, type, format === 'jpg' ? 0.92 : undefined)
+  if (!blob) return
+  const suffix = total && total > 1 ? `-${String(index).padStart(2, '0')}` : ''
+  blobDownload(blob, `${sanitizeFilename(title)}${suffix}.${ext}`)
+}
+
+export async function downloadAllCardImages({ nodes, title, format = 'png' }) {
+  for (let i = 0; i < nodes.length; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    await downloadCardImage({
+      node: nodes[i],
+      title,
+      index: i + 1,
+      total: nodes.length,
+      format,
+    })
+    // 给浏览器一点喘息间隔，避免被合并/拦截
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 180))
+  }
+}
+
+// Safari / Chrome 要求 ClipboardItem 在用户点击的同一 task 内同步构造，
+// 因此把"渲染 + 取 blob"放进 Promise，传给 ClipboardItem 作为 lazy value。
+export function copyCardToClipboard({ node }) {
+  if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+    return Promise.reject(
+      new Error('当前浏览器不支持图片剪贴板（请用 Chrome / Edge / Safari 新版，且页面必须是 HTTPS 或 localhost）'),
+    )
+  }
+  const blobPromise = (async () => {
+    const canvas = await renderCardNode(node, 2)
+    const blob = await canvasToBlob(canvas, 'image/png')
+    if (!blob) throw new Error('截图失败')
+    return blob
+  })()
+  return navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })])
+}
+
 export async function downloadPdf({ element, title }) {
   const canvas = await renderElement(element, 2, title)
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })

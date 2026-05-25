@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import PromptScoreCard from '../../components/PromptScoreCard.jsx'
 import Markdown, { stripLeadingTitle } from '../../components/Markdown.jsx'
 import SelectionRetranslate from '../../components/SelectionRetranslate.jsx'
+import CardsExportDrawer from '../../components/CardsExportDrawer.jsx'
 import {
   deleteGeneration,
   getGeneration,
@@ -37,6 +38,7 @@ export default function GenerationDetail() {
   const [originalOpen, setOriginalOpen] = useState(false)
   const [downloadOpen, setDownloadOpen] = useState(false)
   const [downloading, setDownloading] = useState('')
+  const [cardsOpen, setCardsOpen] = useState(false)
 
   // 视图模式：'zh' | 'en' | 'compare'
   // 默认：有英文 → compare（中英对照），否则 zh
@@ -198,6 +200,13 @@ export default function GenerationDetail() {
                 <button onClick={onCopy} className="btn-ghost text-sm" title="复制正文">
                   复制
                 </button>
+                <button
+                  onClick={() => setCardsOpen(true)}
+                  className="btn-ghost text-sm"
+                  title="把正文渲染成小红书 / 朋友圈 / 抖音 / 长图 等图文卡片，可预览并下载"
+                >
+                  🖼 导出图文
+                </button>
                 <DownloadMenu
                   refEl={downloadMenuRef}
                   open={downloadOpen}
@@ -345,6 +354,13 @@ export default function GenerationDetail() {
         taskType={gen.task_type}
         industryKeywords={gen.industry_keywords}
         onReplace={(nextEnglish) => setEnglishContent(gen.id, nextEnglish, gen.english_title)}
+      />
+
+      <CardsExportDrawer
+        open={cardsOpen}
+        onClose={() => setCardsOpen(false)}
+        title={gen.title}
+        content={gen.content || ''}
       />
     </div>
   )
