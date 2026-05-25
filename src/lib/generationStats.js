@@ -149,7 +149,10 @@ const LABEL_FNS = {
 // ── 团队排名 ───────────────────────────────────────
 
 /**
- * 按 created_by 聚合，返回 [{ user, count, tokensIn, tokensOut, tokensTotal }]
+ * 按 created_by 聚合
+ * 返回 [{ user, count, tokensIn, tokensOut, tokensTotal, scoredCount, avgPromptScore }]
+ * - avgPromptScore：基于 score.total（0-100，自动评分），null = 该用户没有任何带评分的 generation
+ * - scoredCount  ：参与评分平均的篇数
  * 调用方再按需要的字段排序
  */
 export function leaderboardByUser(generations) {
@@ -157,13 +160,20 @@ export function leaderboardByUser(generations) {
   for (const g of generations) {
     const user = g.created_by || '未署名'
     if (!map.has(user)) {
-      map.set(user, { user, count: 0, tokensIn: 0, tokensOut: 0 })
+      map.set(user, {
+        user, count: 0, tokensIn: 0, tokensOut: 0,
+        promptScoreSum: 0, scoredCount: 0,
+      })
     }
     const e = map.get(user)
     e.count += 1
     if (g.token_usage) {
       e.tokensIn += Number(g.token_usage.prompt_tokens || 0)
       e.tokensOut += Number(g.token_usage.completion_tokens || 0)
+    }
+    if (g.score && typeof g.score.total === 'number') {
+      e.promptScoreSum += g.score.total
+      e.scoredCount += 1
     }
   }
   return Array.from(map.values()).map((e) => ({
@@ -172,7 +182,93 @@ export function leaderboardByUser(generations) {
     tokensIn: e.tokensIn,
     tokensOut: e.tokensOut,
     tokensTotal: e.tokensIn + e.tokensOut,
+    scoredCount: e.scoredCount,
+    avgPromptScore: e.scoredCount > 0
+      ? Math.round(e.promptScoreSum / e.scoredCount)
+      : null,
   }))
+}
+
+/**
+ * 给定用户的过去 N 天日序列（含 0 数据日，保证曲线连续）
+ *
+ * 返回 [{ date, dayKey, tokens, dayAvgScore, cumAvgScore, cumScoreCount }]
+ * - tokens         : 当日的 token 用量合计（prompt + completion）—— 用于 "日用量" 曲线
+ * - dayAvgScore    : 当日 prompt 自动评分的平均（仅当天的篇）—— 备用
+ * - cumAvgScore    : **截止到当日**的累计平均分（包含窗口前的历史，保证起点不会是 0）
+ * - cumScoreCount  : 累计评分篇数
+ *
+ * user === null/undefined 时聚合所有人；否则按 created_by 过滤
+ */
+export function dailySeries(generations, user = null, days = 30) {
+  const today = startOfDay(new Date())
+  const series = []
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i)
+    series.push({
+      date: d,
+      dayKey: dayKey(d),
+      tokens: 0,
+      dayScoreSum: 0,
+      dayScoreCount: 0,
+      dayAvgScore: null,
+      cumAvgScore: null,
+      cumScoreCount: 0,
+    })
+  }
+  const idxByDay = new Map(series.map((s, idx) => [s.dayKey, idx]))
+
+  const userGens = user
+    ? generations.filter((g) => g.created_by === user)
+    : generations
+
+  // 当日 token & 当日评分
+  for (const g of userGens) {
+    const t = new Date(g.created_at || 0)
+    const k = dayKey(t)
+    const idx = idxByDay.get(k)
+    if (idx === undefined) continue
+    const s = series[idx]
+    if (g.token_usage) {
+      s.tokens +=
+        Number(g.token_usage.prompt_tokens || 0) +
+        Number(g.token_usage.completion_tokens || 0)
+    }
+    if (g.score && typeof g.score.total === 'number') {
+      s.dayScoreSum += g.score.total
+      s.dayScoreCount += 1
+    }
+  }
+  for (const s of series) {
+    if (s.dayScoreCount > 0) {
+      s.dayAvgScore = Math.round(s.dayScoreSum / s.dayScoreCount)
+    }
+  }
+
+  // 累计平均分：扫描所有有评分的 generation（包括窗口前的），
+  // 在 series 上各日 23:59:59 截断后累加
+  const sortedAll = userGens
+    .filter((g) => g.score && typeof g.score.total === 'number')
+    .map((g) => ({ t: new Date(g.created_at || 0), v: g.score.total }))
+    .sort((a, b) => a.t - b.t)
+
+  let runSum = 0
+  let runCount = 0
+  let p = 0
+  for (const s of series) {
+    const endOfDay = new Date(s.date)
+    endOfDay.setHours(23, 59, 59, 999)
+    while (p < sortedAll.length && sortedAll[p].t <= endOfDay) {
+      runSum += sortedAll[p].v
+      runCount += 1
+      p += 1
+    }
+    s.cumScoreCount = runCount
+    s.cumAvgScore = runCount > 0 ? Math.round(runSum / runCount) : null
+  }
+
+  return series
 }
 
 /**

@@ -1,11 +1,13 @@
+const API_BASE = import.meta.env.VITE_API_BASE || ''
+
 export async function getHealth() {
-  const r = await fetch('/api/health')
+  const r = await fetch(`${API_BASE}/api/health`)
   if (!r.ok) throw new Error(`Health check failed: HTTP ${r.status}`)
   return r.json()
 }
 
 export async function getBalance() {
-  const r = await fetch('/api/balance')
+  const r = await fetch(`${API_BASE}/api/balance`)
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(data.message || `Balance check failed: HTTP ${r.status}`)
   return data
@@ -30,7 +32,7 @@ export async function streamChat({
   onDelta,
   signal,
 }) {
-  const res = await fetch('/api/chat', {
+  const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, messages, temperature, max_tokens }),

@@ -15,7 +15,7 @@ export default function Register() {
     setError('')
     setSubmitting(true)
     try {
-      const r = await fetch('/api/auth/register', {
+      const r = await fetch(`${import.meta.env.VITE_API_BASE || ''}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, inviteCode }),
