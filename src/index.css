@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-cream-50 text-ink-800 font-sans antialiased;
+    background-image:
+      radial-gradient(at 8% 0%, rgba(242, 153, 74, 0.12) 0px, transparent 50%),
+      radial-gradient(at 92% 0%, rgba(217, 119, 87, 0.10) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(251, 239, 217, 0.6) 0px, transparent 60%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    @apply bg-clay-400/40 text-ink-900;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-clay-500 px-6 py-3 font-medium text-cream-50 shadow-warm transition hover:bg-clay-600 active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-clay-500/30 bg-cream-50/60 px-5 py-2.5 text-sm font-medium text-ink-800 backdrop-blur transition hover:border-clay-500/60 hover:bg-cream-50;
+  }
+  .card {
+    @apply rounded-3xl border border-clay-500/10 bg-cream-50/80 p-6 shadow-soft backdrop-blur transition;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full bg-clay-500/10 px-3 py-1 text-xs font-medium text-clay-700;
+  }
+  .section-title {
+    @apply font-display text-3xl font-bold text-ink-900 sm:text-4xl;
+  }
+  .section-eyebrow {
+    @apply mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-clay-600;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(217, 119, 87, 0.3);
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .markdown-body { @apply text-sm leading-relaxed text-ink-900; }
+  .markdown-body > :first-child { @apply mt-0; }
+  .markdown-body > :last-child { @apply mb-0; }
+  .markdown-body h1 { @apply font-display text-2xl font-bold text-ink-900 mt-6 mb-3; }
+  .markdown-body h2 { @apply font-display text-xl  font-bold text-ink-900 mt-6 mb-2.5; }
+  .markdown-body h3 { @apply font-display text-lg  font-bold text-ink-900 mt-5 mb-2; }
+  .markdown-body h4 { @apply font-display text-base font-bold text-ink-900 mt-4 mb-2; }
+  .markdown-body h5, .markdown-body h6 { @apply font-semibold text-ink-900 mt-3 mb-1.5; }
+  .markdown-body p  { @apply my-3; }
+  .markdown-body strong { @apply font-bold text-ink-900; }
+  .markdown-body em { @apply italic; }
+  .markdown-body del { @apply line-through text-ink-700/60; }
+  .markdown-body code { @apply rounded bg-ink-700/10 px-1 py-0.5 font-mono text-[0.85em]; }
+  .markdown-body pre  { @apply my-3 overflow-x-auto rounded-xl bg-ink-900/90 p-3 text-[12px] leading-relaxed text-cream-50; }
+  .markdown-body pre code { @apply bg-transparent p-0 text-cream-50; }
+  .markdown-body ul { @apply my-3 list-disc pl-6; }
+  .markdown-body ol { @apply my-3 list-decimal pl-6; }
+  .markdown-body li { @apply my-1; }
+  .markdown-body li > p { @apply my-1; }
+  .markdown-body blockquote { @apply my-3 border-l-4 border-clay-500/40 bg-clay-500/5 px-4 py-2 text-ink-700; }
+  .markdown-body hr { @apply my-6 border-0 border-t border-clay-500/20; }
+  .markdown-body a { @apply text-clay-700 underline underline-offset-2 hover:text-clay-600; }
+  .markdown-body table { @apply my-4 w-full border-collapse; }
+  .markdown-body th, .markdown-body td { @apply border border-clay-500/20 px-2 py-1.5 text-left align-top; }
+  .markdown-body th { @apply bg-clay-500/10 font-semibold; }
+  .markdown-body img { @apply my-3 max-w-full rounded-xl; }
+}
