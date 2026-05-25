@@ -5,32 +5,26 @@ import { useConfig } from '../lib/useConfig.js'
 import { stripLeadingTitle } from './Markdown.jsx'
 
 /**
- * 选区重译：用户在中文正文里圈选文字，浮出"🔁 重译选区"按钮。
- * 点击后只翻译选中部分，结果显示在侧边面板里，可选"替换到英文版对应段落"。
- *
- * 段落对齐策略（启发式）：
- *   1. 选区文本在中文全文中 indexOf 定位字符起止点
- *   2. 数选区起始之前的 \n{2,} 个数 → 起始段落 index
- *   3. 数选区内部的 \n{2,} 个数 → 结束段落 index
- *   4. 把英文全文按 \n{2,} 切段，替换同 index 区间
- *   5. 段落数对不齐时把按钮 disabled + 给出提示
+ * 选区重译：用户在原文容器里圈选文字 → 浮出"🔁 重译选区"按钮。
+ * 点击后只翻译选中部分，结果在侧边面板，可选"替换到译文对应段落"。
+ * 支持双向：sourceLang='zh' → 翻译为英文；sourceLang='en' → 翻译为中文。
  *
  * Props:
- *   targetRef          中文正文容器 ref（在此 ref 内的选区才会响应）
- *   chineseFull        gen.content 完整中文
- *   englishFull        gen.english_content 完整英文（可空）
- *   englishTitleLine   英文标题行（第一段拼装时需要保留；可空）
- *   taskType           gen.task_type
- *   industryKeywords   gen.industry_keywords
- *   onReplace          (nextEnglishFull) => void  · 段落替换后回调
- *   model / temperature / max_tokens 走 useConfig
+ *   targetRef          原文容器 ref（在此 ref 内的选区才会响应）
+ *   sourceFull         gen.content 完整原文（任一语种）
+ *   translatedFull     gen.english_content 完整译文（可空）—— 字段名沿用旧 schema
+ *   sourceTitle        原文标题
+ *   translatedTitle    译文标题
+ *   sourceLang         'zh' | 'en'，决定翻译方向
+ *   onReplace          (nextTranslatedFull) => void  · 段落替换后回调
  */
 export default function SelectionRetranslate({
   targetRef,
-  chineseFull,
-  englishFull,
-  chineseTitle,
-  englishTitle,
+  sourceFull,
+  translatedFull,
+  sourceTitle,
+  translatedTitle,
+  sourceLang = 'zh',
   taskType,
   industryKeywords,
   onReplace,
@@ -92,10 +86,10 @@ export default function SelectionRetranslate({
 
   // ── 段落区间推算 ───────────────────────────
   // 注意：必须在「剥掉前导 # 标题」之后的 body 上数段落，
-  // 否则中文若没有 # 标题、英文却被翻译模型加了一个，会把段落 0 切到英文标题上。
+  // 否则两边前导 # 标题数量不一致时段落 index 会错位。
   const range = useMemo(
-    () => alignParagraphs(chineseFull || '', selectionText, chineseTitle),
-    [chineseFull, selectionText, chineseTitle],
+    () => alignParagraphs(sourceFull || '', selectionText, sourceTitle),
+    [sourceFull, selectionText, sourceTitle],
   )
 
   // ── 翻译流式调用 ───────────────────────────
@@ -119,7 +113,8 @@ export default function SelectionRetranslate({
         temperature: 0.2,
         max_tokens: Math.max(2048, config.max_tokens || 2048),
         messages: buildTranslationMessages({
-          chineseContent: selectionText,
+          sourceContent: selectionText,
+          sourceLang,
           taskType,
           industryKeywords,
         }),
@@ -160,26 +155,26 @@ export default function SelectionRetranslate({
     }
   }
 
-  // ── 替换到英文版 ───────────────────────────
+  // ── 替换到译文版本 ───────────────────────────
   const canReplace =
     stage === 'done' &&
     output.trim() &&
     paragraphRange &&
-    englishFull &&
-    englishFull.trim()
+    translatedFull &&
+    translatedFull.trim()
 
   const replace = () => {
     if (!canReplace) return
     const next = spliceParagraphs(
-      englishFull,
+      translatedFull,
       paragraphRange.startPara,
       paragraphRange.endPara,
       output.trim(),
-      englishTitle,
+      translatedTitle,
     )
     if (next === null) {
       alert(
-        '英文版的段落数与中文版不匹配，无法精确替换。\n请用「复制」把新译文手动粘到对应位置。',
+        '译文的段落数与原文不匹配，无法精确替换。\n请用「复制」把新译文手动粘到对应位置。',
       )
       return
     }
@@ -214,7 +209,7 @@ export default function SelectionRetranslate({
               </p>
               <p className="font-mono text-[11px] text-ink-700/70">
                 {paragraphRange
-                  ? `中文第 ${paragraphRange.startPara + 1}${paragraphRange.endPara !== paragraphRange.startPara ? `-${paragraphRange.endPara + 1}` : ''} 段 · ${selectionText.length} 字`
+                  ? `原文第 ${paragraphRange.startPara + 1}${paragraphRange.endPara !== paragraphRange.startPara ? `-${paragraphRange.endPara + 1}` : ''} 段 · ${selectionText.length} 字`
                   : `${selectionText.length} 字`}
               </p>
             </div>
@@ -249,7 +244,11 @@ export default function SelectionRetranslate({
             >
               <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold text-clay-700">
                 <span>
-                  {stage === 'running' ? '⏳' : stage === 'error' ? '✗' : '🇬🇧'}
+                  {stage === 'running'
+                    ? '⏳'
+                    : stage === 'error'
+                    ? '✗'
+                    : sourceLang === 'en' ? '🇨🇳' : '🇬🇧'}
                 </span>
                 <span>
                   {stage === 'running'
@@ -282,12 +281,12 @@ export default function SelectionRetranslate({
             {/* 段落对齐警告 */}
             {stage === 'done' && output && !paragraphRange && (
               <p className="mt-2 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-[11px] text-amber-800">
-                ⚠ 段落定位失败（可能因为选区跨越非段落分隔），可复制后手动粘进英文版。
+                ⚠ 段落定位失败（可能因为选区跨越非段落分隔），可复制后手动粘到对应位置。
               </p>
             )}
-            {stage === 'done' && output && paragraphRange && !englishFull && (
+            {stage === 'done' && output && paragraphRange && !translatedFull && (
               <p className="mt-2 rounded-lg bg-sky-500/15 px-2.5 py-1.5 text-[11px] text-sky-800">
-                ℹ 还没有英文整版，先点上方"翻译"按钮生成整版，再使用选区重译。
+                ℹ 还没有整版译文，先点上方"翻译"按钮生成整版，再使用选区重译。
               </p>
             )}
           </div>
@@ -311,7 +310,7 @@ export default function SelectionRetranslate({
                 )}
                 {canReplace && (
                   <button onClick={replace} className="btn-primary text-sm">
-                    替换到英文版对应段
+                    替换到译文对应段
                   </button>
                 )}
                 <button onClick={close} className="btn-ghost text-sm">
