@@ -11,6 +11,7 @@ import {
   dayKey,
   startOfDay,
 } from '../../lib/generationStats.js'
+import TrendCharts from '../../components/TrendCharts.jsx'
 
 const VIEW_MODES = [
   { id: 'detail', label: '详情' },
@@ -26,7 +27,7 @@ const PAGE_SIZES = [
 export default function GenerationList() {
   useGenerationsState() // subscribe for re-render
   const items = listGenerations()
-  const [boardOpen, setBoardOpen] = useState(false)
+  const [boardTab, setBoardTab] = useState(null) // null = closed, 'tokens' | 'score' = which tab
   const [viewMode, setViewMode] = useState('detail')
   const [pageSize, setPageSize] = useState(20)
   const [page, setPage] = useState(0)
@@ -59,12 +60,19 @@ export default function GenerationList() {
         </Link>
       </header>
 
-      <StatsBoard items={items} onOpenLeaderboard={() => setBoardOpen(true)} />
+      <StatsBoard items={items} onOpenLeaderboard={(tab) => setBoardTab(tab)} />
+
+      {items.length > 0 && (
+        <div className="mt-4">
+          <TrendCharts items={items} />
+        </div>
+      )}
 
       <LeaderboardModal
         items={items}
-        open={boardOpen}
-        onClose={() => setBoardOpen(false)}
+        open={boardTab !== null}
+        initialTab={boardTab || 'tokens'}
+        onClose={() => setBoardTab(null)}
       />
 
       <div className="mb-4 mt-4 rounded-2xl border border-clay-500/15 bg-cream-100/40 px-4 py-2.5 text-xs text-ink-700/80">
@@ -177,20 +185,53 @@ function TogglePill({ label, value, options, onChange, valueKey = 'id' }) {
   )
 }
 
-function TeamLeaderboard({ items }) {
+const LB_TABS = [
+  { id: 'tokens', label: 'Token 用量' },
+  { id: 'score',  label: 'Prompt 平均分' },
+]
+
+function TeamLeaderboard({ items, initialTab = 'tokens' }) {
+  const [tab, setTab] = useState(initialTab)
+  useEffect(() => { setTab(initialTab) }, [initialTab])
+
   const rows = useMemo(() => leaderboardByUser(items), [items])
-  const sorted = useMemo(
-    () => rows.slice().sort((a, b) => b.tokensTotal - a.tokensTotal),
-    [rows],
-  )
+  const sorted = useMemo(() => {
+    const r = rows.slice()
+    if (tab === 'tokens') {
+      r.sort((a, b) => b.tokensTotal - a.tokensTotal)
+    } else {
+      r.sort((a, b) => (b.avgPromptScore ?? -1) - (a.avgPromptScore ?? -1))
+    }
+    return r
+  }, [rows, tab])
+
+  const totalScored = rows.reduce((acc, r) => acc + (r.scoredCount || 0), 0)
 
   return (
     <div className="rounded-3xl border border-clay-500/15 bg-cream-50/80 p-5 shadow-soft">
       <div className="mb-4 pr-10">
-        <h3 className="font-display text-base font-bold text-ink-900">团队 Token 排名</h3>
+        <h3 className="font-display text-base font-bold text-ink-900">团队排名</h3>
         <p className="mt-0.5 text-[11px] text-ink-700/60">
           按作者聚合 · {items.length} 篇生成 · {rows.length} 位成员
+          {tab === 'score' && <> · 已评分 {totalScored} / {items.length} 篇</>}
         </p>
+        <div className="mt-3 flex justify-center">
+          <div className="inline-flex items-center gap-1 rounded-full border border-clay-500/15 bg-cream-50 p-1">
+            {LB_TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  tab === t.id
+                    ? 'bg-clay-500 text-cream-50 shadow-warm'
+                    : 'text-ink-700 hover:bg-clay-500/10 hover:text-ink-900'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {sorted.length === 0 ? (
@@ -220,9 +261,25 @@ function TeamLeaderboard({ items }) {
               </span>
               <span className="font-mono text-[11px] text-ink-700/55">
                 {row.count} 篇
+                {tab === 'score' && row.scoredCount > 0 && row.scoredCount < row.count && (
+                  <span className="ml-1 text-ink-700/40">（评 {row.scoredCount}）</span>
+                )}
               </span>
-              <span className="w-24 text-right font-mono text-sm font-semibold text-ink-900">
-                {formatTokens(row.tokensTotal)}
+              <span
+                className="w-24 text-right font-mono text-sm font-semibold text-ink-900"
+                title={
+                  tab === 'score'
+                    ? row.avgPromptScore === null
+                      ? '该成员还没有可评分的 prompt'
+                      : `Prompt 自动评分 0-100 的平均值（${row.scoredCount} / ${row.count} 篇）`
+                    : 'Token 用量合计（prompt + completion）'
+                }
+              >
+                {tab === 'tokens'
+                  ? formatTokens(row.tokensTotal)
+                  : row.avgPromptScore === null
+                  ? '—'
+                  : row.avgPromptScore}
               </span>
             </li>
           ))}
@@ -247,13 +304,25 @@ function StatsBoard({ items, onOpenLeaderboard }) {
     [items],
   )
 
-  const { myTokens, myRank, teamSize } = useMemo(() => {
+  const { myTokens, myTokenRank, myPromptScore, myScoreRank, myScoredCount, teamSize } = useMemo(() => {
     const rows = leaderboardByUser(items)
-    rows.sort((a, b) => b.tokensTotal - a.tokensTotal)
-    const idx = rows.findIndex((r) => r.user === CURRENT_USER)
+
+    const byTokens = rows.slice().sort((a, b) => b.tokensTotal - a.tokensTotal)
+    const tIdx = byTokens.findIndex((r) => r.user === CURRENT_USER)
+
+    // Prompt 均分排名时，把"没评过"的成员排到底，避免他们占据 1 / N 的位置
+    const byScore = rows.slice().sort(
+      (a, b) => (b.avgPromptScore ?? -1) - (a.avgPromptScore ?? -1),
+    )
+    const sIdx = byScore.findIndex((r) => r.user === CURRENT_USER)
+    const mine = sIdx >= 0 ? byScore[sIdx] : null
+
     return {
-      myTokens: idx >= 0 ? rows[idx].tokensTotal : 0,
-      myRank: idx >= 0 ? idx + 1 : null,
+      myTokens: tIdx >= 0 ? byTokens[tIdx].tokensTotal : 0,
+      myTokenRank: tIdx >= 0 ? tIdx + 1 : null,
+      myPromptScore: mine?.avgPromptScore ?? null,
+      myScoreRank: mine?.avgPromptScore != null ? sIdx + 1 : null,
+      myScoredCount: mine?.scoredCount ?? 0,
       teamSize: rows.length,
     }
   }, [items])
@@ -270,7 +339,7 @@ function StatsBoard({ items, onOpenLeaderboard }) {
   }, [items, today])
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
       <Tile label="生成总数" value={totalCount} hint="同一 prompt 多次算 1" />
       <Tile
         label="使用总数"
@@ -282,22 +351,45 @@ function StatsBoard({ items, onOpenLeaderboard }) {
         value={`${activeDaysThisMonth} 天`}
         hint="当月有生成的天数"
       />
-      <button
-        type="button"
-        onClick={onOpenLeaderboard}
-        className="rounded-2xl border border-clay-500/25 bg-clay-500/5 p-3 text-left transition hover:bg-clay-500/15 hover:shadow-soft"
-      >
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-700/55">
-          我的 token
-        </p>
-        <p className="mt-1 font-display text-2xl font-bold text-ink-900">
-          {formatTokens(myTokens)}
-        </p>
-        <p className="mt-0.5 text-[10px] text-clay-700">
-          {myRank ? `团队第 ${myRank} / ${teamSize} · 查看榜单 →` : '查看团队榜单 →'}
-        </p>
-      </button>
+      <RankTile
+        label="我的 Prompt 均分"
+        value={myPromptScore === null ? '—' : myPromptScore}
+        hint={
+          myPromptScore === null
+            ? '还没有评分数据'
+            : myScoreRank
+            ? `团队第 ${myScoreRank} / ${teamSize} · 查看榜单 →`
+            : '查看团队榜单 →'
+        }
+        onClick={() => onOpenLeaderboard('score')}
+      />
+      <RankTile
+        label="我的 token"
+        value={formatTokens(myTokens)}
+        hint={
+          myTokenRank
+            ? `团队第 ${myTokenRank} / ${teamSize} · 查看榜单 →`
+            : '查看团队榜单 →'
+        }
+        onClick={() => onOpenLeaderboard('tokens')}
+      />
     </div>
+  )
+}
+
+function RankTile({ label, value, hint, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-2xl border border-clay-500/25 bg-clay-500/5 p-3 text-left transition hover:bg-clay-500/15 hover:shadow-soft"
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-700/55">
+        {label}
+      </p>
+      <p className="mt-1 font-display text-2xl font-bold text-ink-900">{value}</p>
+      <p className="mt-0.5 text-[10px] text-clay-700">{hint}</p>
+    </button>
   )
 }
 
@@ -313,7 +405,7 @@ function Tile({ label, value, hint }) {
   )
 }
 
-function LeaderboardModal({ items, open, onClose }) {
+function LeaderboardModal({ items, open, initialTab, onClose }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -336,7 +428,7 @@ function LeaderboardModal({ items, open, onClose }) {
         >
           ×
         </button>
-        <TeamLeaderboard items={items} />
+        <TeamLeaderboard items={items} initialTab={initialTab} />
       </div>
     </div>
   )

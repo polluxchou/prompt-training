@@ -14,6 +14,11 @@ const SUPABASE_URL = process.env.SUPABASE_URL || ''
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const INVITE_CAP = 100
 
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+
 const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -21,7 +26,17 @@ const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   : null
 
 const app = express()
-app.use(cors())
+app.use(
+  cors({
+    origin:
+      ALLOWED_ORIGINS.length === 0
+        ? true
+        : (origin, cb) => {
+            if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true)
+            return cb(new Error(`CORS: origin ${origin} not allowed`))
+          },
+  })
+)
 app.use(express.json({ limit: '1mb' }))
 
 const buckets = new Map()
@@ -266,4 +281,7 @@ app.listen(PORT, () => {
   console.log(`  Supabase: ${supabaseAdmin ? '✓ 已配置' : '✗ 未配置 (注册功能将不可用)'}`)
   console.log(`  上游:     ${BASE_URL}`)
   console.log(`  限流:     ${RATE_LIMIT_PER_MIN} req / min / IP`)
+  console.log(
+    `  CORS:     ${ALLOWED_ORIGINS.length === 0 ? '* (开发模式，未设置 ALLOWED_ORIGINS)' : ALLOWED_ORIGINS.join(', ')}`
+  )
 })

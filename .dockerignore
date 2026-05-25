@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.claude
+src
+supabase
+public
+index.html
+vite.config.js
+postcss.config.js
+tailwind.config.js
+README.md
