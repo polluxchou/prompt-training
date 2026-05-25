@@ -189,13 +189,6 @@ export default function GenerationNew() {
               placeholder="例如：紧固件, 制造业, 出海"
               className="w-full rounded-xl border border-clay-500/25 bg-cream-50 px-3 py-2.5 text-sm outline-none transition focus:border-clay-500/60"
             />
-            {industryKeywords.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {industryKeywords.map((k) => (
-                  <span key={k} className="chip">{k}</span>
-                ))}
-              </div>
-            )}
           </Card>
 
           <Card title="提示词（Prompt）" hint="包含 角色 · 任务 · 上下文 · 输出格式 · 约束 · 示例 评分会更高">

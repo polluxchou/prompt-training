@@ -14,7 +14,7 @@ export const boardMenu = [
   {
     id: 'content-gen',
     label: '① 内容生成',
-    icon: '✍️',
+    icon: '',
     path: '/generate · /scheduled-content',
     summary: '用户按不同类型提示词生成内容，并回看 / 编辑 / 删除历史',
     children: [
@@ -132,7 +132,7 @@ export const boardMenu = [
   {
     id: 'training',
     label: '提示词训练课件',
-    icon: '🎓',
+    icon: '',
     path: '/',
     summary: '附加资产 · 不属于产品三大需求，仅用于内部学习',
     children: [

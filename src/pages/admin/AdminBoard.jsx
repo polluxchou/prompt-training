@@ -84,7 +84,7 @@ export default function AdminBoard() {
                       : 'text-ink-800 hover:bg-clay-500/10'
                   }`}
                 >
-                  <span className="text-base">{m.icon}</span>
+                  {m.icon && <span className="text-base">{m.icon}</span>}
                   <span className="flex-1 font-semibold">{m.label}</span>
                   <span
                     className={`text-[10px] ${
@@ -104,7 +104,7 @@ export default function AdminBoard() {
           <div className="rounded-3xl border border-clay-500/15 bg-cream-100/40 px-5 py-4">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="font-display text-xl font-bold text-ink-900">
-                {activeRoot.icon} {activeRoot.label}
+                {activeRoot.icon ? `${activeRoot.icon} ` : ''}{activeRoot.label}
               </h2>
               <code className="font-mono text-xs text-ink-700/60">
                 {activeRoot.path}

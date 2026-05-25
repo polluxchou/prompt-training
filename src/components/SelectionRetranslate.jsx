@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { streamChat } from '../lib/api.js'
 import { buildTranslationMessages } from '../lib/promptPipeline.js'
 import { useConfig } from '../lib/useConfig.js'
+import { stripLeadingTitle } from './Markdown.jsx'
 
 /**
  * 选区重译：用户在中文正文里圈选文字，浮出"🔁 重译选区"按钮。
@@ -28,6 +29,8 @@ export default function SelectionRetranslate({
   targetRef,
   chineseFull,
   englishFull,
+  chineseTitle,
+  englishTitle,
   taskType,
   industryKeywords,
   onReplace,
@@ -88,9 +91,11 @@ export default function SelectionRetranslate({
   }, [targetRef])
 
   // ── 段落区间推算 ───────────────────────────
+  // 注意：必须在「剥掉前导 # 标题」之后的 body 上数段落，
+  // 否则中文若没有 # 标题、英文却被翻译模型加了一个，会把段落 0 切到英文标题上。
   const range = useMemo(
-    () => alignParagraphs(chineseFull || '', selectionText),
-    [chineseFull, selectionText],
+    () => alignParagraphs(chineseFull || '', selectionText, chineseTitle),
+    [chineseFull, selectionText, chineseTitle],
   )
 
   // ── 翻译流式调用 ───────────────────────────
@@ -170,6 +175,7 @@ export default function SelectionRetranslate({
       paragraphRange.startPara,
       paragraphRange.endPara,
       output.trim(),
+      englishTitle,
     )
     if (next === null) {
       alert(
@@ -329,21 +335,23 @@ function splitParagraphs(text) {
 }
 
 /**
- * 找选区文本在中文全文里的段落区间（含端点，0-based）
- * 选区不在原文里精确出现时，做一个 normalize 容错（空白折叠）。
+ * 找选区文本在中文 body 里的段落区间（含端点，0-based）
+ * 段落 index 在「剥掉前导 # 标题」后的 body 上计算，避免中英两边
+ * 前导 # 标题数量不一致（如中文无标题、英文翻译时被加了一行 #）导致错位。
  */
-function alignParagraphs(fullText, selection) {
+function alignParagraphs(fullText, selection, title) {
   if (!fullText || !selection) return null
-  let idx = fullText.indexOf(selection)
+  const body = stripLeadingTitle(fullText, title)
+  let idx = body.indexOf(selection)
   if (idx < 0) {
     // 容错：归一化空白再找
-    const normFull = fullText.replace(/[ \t ]+/g, ' ')
+    const normFull = body.replace(/[ \t ]+/g, ' ')
     const normSel = selection.replace(/[ \t ]+/g, ' ').trim()
     idx = normFull.indexOf(normSel)
     if (idx < 0) return null
   }
-  const before = fullText.slice(0, idx)
-  const within = fullText.slice(idx, idx + selection.length)
+  const before = body.slice(0, idx)
+  const within = body.slice(idx, idx + selection.length)
   const startPara = countMatches(before, PARA_BREAK)
   const spanned = countMatches(within, PARA_BREAK)
   const endPara = startPara + spanned
@@ -356,14 +364,18 @@ function countMatches(text, re) {
 }
 
 /**
- * 把 fullEnglish 按段落切，替换 [startPara, endPara] 区间为 replacement
- * 区间越界或英文段数 < startPara 时返回 null
+ * 把 fullEnglish 按段落切，替换 body 段落区间 [startPara, endPara] 为 replacement。
+ * startPara/endPara 是 body 内的段落 index（不含前导 # 标题）。
+ * 区间越界或 body 段数 < startPara 时返回 null。
  */
-function spliceParagraphs(fullEnglish, startPara, endPara, replacement) {
-  const paras = splitParagraphs(fullEnglish)
+function spliceParagraphs(fullEnglish, startPara, endPara, replacement, title) {
+  const body = stripLeadingTitle(fullEnglish, title)
+  const head = fullEnglish.slice(0, fullEnglish.length - body.length)
+  const paras = splitParagraphs(body)
   if (startPara < 0 || startPara >= paras.length) return null
   const clampedEnd = Math.min(endPara, paras.length - 1)
   const before = paras.slice(0, startPara)
   const after = paras.slice(clampedEnd + 1)
-  return [...before, replacement, ...after].join('\n\n')
+  const newBody = [...before, replacement, ...after].join('\n\n')
+  return head + newBody
 }
