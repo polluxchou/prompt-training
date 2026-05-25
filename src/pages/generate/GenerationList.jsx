@@ -200,8 +200,8 @@ function TogglePill({ label, value, options, onChange, valueKey = 'id' }) {
 }
 
 const LB_TABS = [
-  { id: 'tokens', label: 'Token 用量' },
   { id: 'score',  label: 'Prompt 平均分' },
+  { id: 'tokens', label: 'Token 用量' },
 ]
 
 function TeamLeaderboard({ items, initialTab = 'tokens' }) {
