@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CURRENT_USER, listGenerations, deleteGeneration } from '../../lib/generationsStore.js'
 import { useGenerationsState } from '../../lib/useGenerations.js'
+import { useAuth } from '../../lib/useAuth.jsx'
 import { describeTaskType } from '../../data/taskTypes.js'
 import { formatRelative } from '../../lib/schedulesStore.js'
 import {
@@ -26,6 +27,7 @@ const PAGE_SIZES = [
 
 export default function GenerationList() {
   useGenerationsState() // subscribe for re-render
+  const { user } = useAuth()
   const items = listGenerations()
   const [boardTab, setBoardTab] = useState(null) // null = closed, 'tokens' | 'score' = which tab
   const [viewMode, setViewMode] = useState('detail')
@@ -76,8 +78,20 @@ export default function GenerationList() {
       />
 
       <div className="mb-4 mt-4 rounded-2xl border border-clay-500/15 bg-cream-100/40 px-4 py-2.5 text-xs text-ink-700/80">
-        🧪 原型模式 · 数据存浏览器 localStorage（刷新不丢，仅当前设备可见）·
-        调用走真实 DeepSeek 后端
+        {user ? (
+          <>
+            ☁️ 已登录为 <span className="font-mono text-clay-700">{user.email}</span>{' '}
+            · 生成历史已同步到云端，跨设备可见 · 调用走真实 DeepSeek 后端
+          </>
+        ) : (
+          <>
+            🧪 离线草稿模式 · 数据仅存当前浏览器 localStorage（刷新不丢，仅当前设备可见）·{' '}
+            <Link to="/login" className="text-clay-700 underline-offset-2 hover:underline">
+              登录
+            </Link>{' '}
+            后自动同步到云端 · 调用走真实 DeepSeek 后端
+          </>
+        )}
       </div>
 
       {items.length === 0 ? (

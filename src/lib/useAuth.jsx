@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase.js'
+import { setSyncContext, hydrateFromCloud } from './generationsStore.js'
 
 const AuthCtx = createContext({
   session: null,
@@ -34,9 +35,19 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!session?.user?.id) {
       setProfile(null)
+      setSyncContext(null)
       return
     }
-    loadProfile(session.user.id).then(setProfile)
+    loadProfile(session.user.id).then((p) => {
+      setProfile(p)
+      setSyncContext({
+        userId: session.user.id,
+        email: p?.email || session.user.email || '',
+      })
+      hydrateFromCloud().catch((err) =>
+        console.error('[useAuth] hydrate generations failed', err),
+      )
+    })
   }, [session?.user?.id])
 
   async function loadProfile(userId) {
