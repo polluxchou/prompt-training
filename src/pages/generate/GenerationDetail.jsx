@@ -12,7 +12,7 @@ import {
   updateGeneration,
 } from '../../lib/generationsStore.js'
 import { streamChat } from '../../lib/api.js'
-import { buildTranslationMessages } from '../../lib/promptPipeline.js'
+import { buildTranslationMessages, detectLang } from '../../lib/promptPipeline.js'
 import { useConfig } from '../../lib/useConfig.js'
 import { useGenerationsState } from '../../lib/useGenerations.js'
 import { describeTaskType } from '../../data/taskTypes.js'
@@ -85,6 +85,10 @@ export default function GenerationDetail() {
 
   if (!gen) return <Navigate to="/generate" replace />
 
+  // 判断原文语种：中文条目走 zh→en，英文条目走 en→zh。english_content 字段
+  // 在这两种方向上都被复用为「另一语种的译文」。
+  const sourceLang = detectLang(gen.content || '')
+
   const onSave = () => {
     updateGeneration(gen.id, { title: draft.title, content: draft.content })
     setEditing(false)
@@ -118,7 +122,8 @@ export default function GenerationDetail() {
         temperature: 0.2, // 翻译要稳，温度低
         max_tokens: config.max_tokens,
         messages: buildTranslationMessages({
-          chineseContent: gen.content,
+          sourceContent: gen.content,
+          sourceLang,
           taskType: gen.task_type,
           industryKeywords: gen.industry_keywords,
         }),
@@ -259,11 +264,13 @@ export default function GenerationDetail() {
                     <ViewModeTabs
                       mode={viewMode}
                       setMode={setViewMode}
-                      hasEnglish={Boolean(gen.english_content)}
+                      hasTranslation={Boolean(gen.english_content)}
+                      sourceLang={sourceLang}
                     />
                     <TranslateButton
-                      hasEnglish={Boolean(gen.english_content)}
+                      hasTranslation={Boolean(gen.english_content)}
                       translating={translating}
+                      sourceLang={sourceLang}
                       onStart={doTranslate}
                       onStop={stopTranslate}
                     />
@@ -291,6 +298,7 @@ export default function GenerationDetail() {
                 gen={gen}
                 mode={viewMode}
                 translating={translating}
+                sourceLang={sourceLang}
               />
             )}
           </section>
@@ -347,13 +355,14 @@ export default function GenerationDetail() {
       {/* 选区重译：监听中文容器内的文本选区，提供"重译选段"浮按钮 + 替换 */}
       <SelectionRetranslate
         targetRef={zhRef}
-        chineseFull={gen.content || ''}
-        englishFull={gen.english_content || ''}
-        chineseTitle={gen.title}
-        englishTitle={gen.english_title || gen.title}
+        sourceFull={gen.content || ''}
+        translatedFull={gen.english_content || ''}
+        sourceTitle={gen.title}
+        translatedTitle={gen.english_title || gen.title}
+        sourceLang={sourceLang}
         taskType={gen.task_type}
         industryKeywords={gen.industry_keywords}
-        onReplace={(nextEnglish) => setEnglishContent(gen.id, nextEnglish, gen.english_title)}
+        onReplace={(nextTranslation) => setEnglishContent(gen.id, nextTranslation, gen.english_title)}
       />
 
       <CardsExportDrawer
@@ -451,43 +460,47 @@ function Collapsible({ id, icon, title, open, onToggle, children }) {
   )
 }
 
-function ContentView({ refEl, zhRef, gen, mode, translating }) {
-  const zh = stripLeadingTitle(gen.content || '', gen.title)
-  const en = stripLeadingTitle(gen.english_content || '', gen.english_title || gen.title)
-  const showZh = mode === 'zh' || mode === 'compare'
-  const showEn = (mode === 'en' || mode === 'compare') && (en || translating)
+function ContentView({ refEl, zhRef, gen, mode, translating, sourceLang }) {
+  // mode='zh' 显示原文（gen.content，任一语种），mode='en' 显示译文（gen.english_content，对侧语种）
+  const source = stripLeadingTitle(gen.content || '', gen.title)
+  const translated = stripLeadingTitle(gen.english_content || '', gen.english_title || gen.title)
+  const showSource = mode === 'zh' || mode === 'compare'
+  const showTranslated = (mode === 'en' || mode === 'compare') && (translated || translating)
+
+  const sourceLabel = sourceLang === 'en' ? 'English · Original' : '中文 · 原版'
+  const transLabel = sourceLang === 'en' ? '中文 · 翻译' : 'English · Translation'
 
   return (
     <div
       ref={refEl}
       className={`bg-cream-50 px-1 py-1 ${mode === 'compare' ? 'grid gap-6 md:grid-cols-2' : ''}`}
     >
-      {showZh && (
+      {showSource && (
         <div
           ref={zhRef}
           className={mode === 'compare' ? 'border-r border-clay-500/10 pr-6 last:border-0 last:pr-0' : ''}
         >
           {mode === 'compare' && (
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-clay-700">
-              中文 · 原版 ·
+              {sourceLabel} ·
               <span className="ml-1 normal-case tracking-normal text-ink-700/55">
                 选中文字可重译这段
               </span>
             </p>
           )}
-          <Markdown source={zh} />
+          <Markdown source={source} />
         </div>
       )}
-      {showEn && (
+      {showTranslated && (
         <div>
           {mode === 'compare' && (
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-clay-700">
-              English · Translation
+              {transLabel}
               {translating && <span className="ml-2 text-ink-700/55">流式中…</span>}
             </p>
           )}
-          {en ? (
-            <Markdown source={en} />
+          {translated ? (
+            <Markdown source={translated} />
           ) : (
             <p className="text-sm text-ink-700/55">等待 DeepSeek 翻译…</p>
           )}
@@ -497,11 +510,13 @@ function ContentView({ refEl, zhRef, gen, mode, translating }) {
   )
 }
 
-function ViewModeTabs({ mode, setMode, hasEnglish }) {
-  if (!hasEnglish) return null
+function ViewModeTabs({ mode, setMode, hasTranslation, sourceLang }) {
+  if (!hasTranslation) return null
+  const sourceLabel = sourceLang === 'en' ? 'English' : '中文'
+  const transLabel = sourceLang === 'en' ? '中文' : 'English'
   const tabs = [
-    { id: 'zh', label: '中文' },
-    { id: 'en', label: 'English' },
+    { id: 'zh', label: sourceLabel },
+    { id: 'en', label: transLabel },
     { id: 'compare', label: '对照' },
   ]
   return (
@@ -524,7 +539,7 @@ function ViewModeTabs({ mode, setMode, hasEnglish }) {
   )
 }
 
-function TranslateButton({ hasEnglish, translating, onStart, onStop }) {
+function TranslateButton({ hasTranslation, translating, sourceLang, onStart, onStop }) {
   if (translating) {
     return (
       <button onClick={onStop} className="btn-ghost text-xs">
@@ -532,13 +547,17 @@ function TranslateButton({ hasEnglish, translating, onStart, onStop }) {
       </button>
     )
   }
+  const targetLabel = sourceLang === 'en' ? '翻译为中文' : '翻译为英文'
+  const targetTip = sourceLang === 'en'
+    ? '调 DeepSeek 1:1 翻译为中文'
+    : '调 DeepSeek 1:1 翻译为英文'
   return (
     <button
       onClick={onStart}
       className="btn-ghost text-xs"
-      title={hasEnglish ? '重新翻译，会覆盖现有英文版' : '调 DeepSeek 1:1 翻译为英文'}
+      title={hasTranslation ? '重新翻译，会覆盖现有译文' : targetTip}
     >
-      🌐 {hasEnglish ? '重译' : '翻译为英文'}
+      🌐 {hasTranslation ? '重译' : targetLabel}
     </button>
   )
 }

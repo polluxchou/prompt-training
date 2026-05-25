@@ -151,5 +151,27 @@ export function deleteGeneration(id) {
 function extractTitle(content) {
   if (!content) return '(未命名)'
   const first = (content.split('\n').find((l) => l.trim().length > 0) || '').trim()
-  return first.replace(/^#+\s*/, '').slice(0, 60) || '(未命名)'
+  return cleanTitleText(first).slice(0, 60) || '(未命名)'
+}
+
+// 把首行可能带的 markdown 标记清掉，得到纯文本标题。
+// 处理：# 标题、**加粗**、*斜体* / _斜体_、`代码`、[文本](url)
+export function cleanTitleText(line) {
+  if (!line) return ''
+  let s = line.trim()
+  // ATX 标题：去掉前导 # 与可能的尾部 #
+  s = s.replace(/^#+\s*/, '').replace(/\s+#+\s*$/, '')
+  // 链接：[text](url) → text
+  s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  // 行内代码：`text` → text
+  s = s.replace(/`+([^`]+)`+/g, '$1')
+  // 加粗 / 斜体：** _  *  — 反复剥两遍，覆盖嵌套
+  for (let i = 0; i < 2; i++) {
+    s = s
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+  }
+  return s.trim()
 }

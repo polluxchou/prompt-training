@@ -118,9 +118,20 @@ export function buildGenerationMessages({
   ]
 }
 
-// ── 翻译（中→英，严格 1:1） ───────────────────────────
+// ── 翻译（中⇄英，严格 1:1） ───────────────────────────
 
-export const TRANSLATION_SYSTEM = `You are a professional translator working on B2B industrial marketing content (fasteners, manufacturing, trade shows).
+// 简易语种判断：根据文本里 CJK 字符 vs ASCII 字母的占比，返回 'zh' | 'en'
+// 用于决定翻译方向（中文条目 → 翻译为英文；英文条目 → 翻译为中文）。
+export function detectLang(text) {
+  if (!text) return 'zh'
+  const cjk = (text.match(/[一-鿿]/g) || []).length
+  const ascii = (text.match(/[a-zA-Z]/g) || []).length
+  if (cjk === 0 && ascii === 0) return 'zh'
+  // CJK 字符即使少量出现也很"密集"，给它 2 倍权重；纯英文文本 cjk=0 自然走 en
+  return cjk * 2 >= ascii ? 'zh' : 'en'
+}
+
+const TRANSLATION_SYSTEM_ZH_TO_EN = `You are a professional translator working on B2B industrial marketing content (fasteners, manufacturing, trade shows).
 
 Translate the user's Chinese text into English with these STRICT rules:
 1. Do NOT add any new information, sentences, marketing copy, or "improvements". Faithful 1:1 mapping only.
@@ -130,17 +141,56 @@ Translate the user's Chinese text into English with these STRICT rules:
 5. Keep numbers, dates, units, and proper nouns unchanged when possible.
 6. Output ONLY the English translation. Do NOT include the original Chinese, do NOT add explanations, prefaces, or "Translation:" labels.`
 
-export function buildTranslationMessages({ chineseContent, taskType, industryKeywords }) {
+const TRANSLATION_SYSTEM_EN_TO_ZH = `You are a professional translator working on B2B industrial marketing content (fasteners, manufacturing, trade shows).
+
+Translate the user's English text into Simplified Chinese with these STRICT rules:
+1. Do NOT add any new information, sentences, marketing copy, or "improvements". Faithful 1:1 mapping only.
+2. Do NOT skip, summarize, or merge any content. Every English sentence / list item must have a Chinese counterpart.
+3. PRESERVE the markdown structure exactly: heading levels (#, ##, ###), lists (-, 1.), bold (**), italics (*), horizontal rules (---), blockquotes (>), code fences.
+4. Use natural professional Simplified Chinese appropriate for the industry. Render English industry terms with their standard Chinese equivalents (e.g. fasteners → 紧固件, distributor → 经销商, buyer → 采购商).
+5. Keep numbers, dates, units, proper nouns, and brand names unchanged when possible.
+6. Output ONLY the Chinese translation. Do NOT include the original English, do NOT add explanations, prefaces, or "翻译：" labels.`
+
+// 兼容历史导出名 —— 默认 zh→en
+export const TRANSLATION_SYSTEM = TRANSLATION_SYSTEM_ZH_TO_EN
+
+/**
+ * 构造翻译 messages。
+ * @param sourceContent  待翻译的全文（任一语种）
+ * @param sourceLang     'zh' | 'en'，默认 'zh'
+ * 历史兼容：仍支持 chineseContent 入参（视为 sourceLang='zh'）
+ */
+export function buildTranslationMessages({
+  sourceContent,
+  sourceLang,
+  chineseContent, // legacy
+  taskType,
+  industryKeywords,
+}) {
+  const content = (sourceContent ?? chineseContent ?? '').trim()
+  const lang = sourceLang || (chineseContent ? 'zh' : detectLang(content))
+
   const ctx = buildTaskContextBlock(taskType, industryKeywords)
   const contextNote = ctx
     ? `Context (background only — do not translate this block; use it to pick the right terminology):\n${ctx}\n\n`
     : ''
+
+  if (lang === 'en') {
+    return [
+      { role: 'system', content: TRANSLATION_SYSTEM_EN_TO_ZH },
+      {
+        role: 'user',
+        content:
+          `${contextNote}Translate the following English text into Simplified Chinese, following all the strict rules:\n\n${content}`,
+      },
+    ]
+  }
   return [
-    { role: 'system', content: TRANSLATION_SYSTEM },
+    { role: 'system', content: TRANSLATION_SYSTEM_ZH_TO_EN },
     {
       role: 'user',
       content:
-        `${contextNote}Translate the following Chinese text into English, following all the strict rules:\n\n${chineseContent.trim()}`,
+        `${contextNote}Translate the following Chinese text into English, following all the strict rules:\n\n${content}`,
     },
   ]
 }
