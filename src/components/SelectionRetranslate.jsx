@@ -81,9 +81,9 @@ export default function SelectionRetranslate({
       if (!rect || (rect.width === 0 && rect.height === 0)) return
       setSelectionText(text)
       setAnchor({
-        // 浮按钮放在选区下方靠右
-        top: rect.bottom + window.scrollY + 6,
-        left: rect.right + window.scrollX - 120,
+        // 浮按钮 position:fixed，坐标用视口系（rect 已是视口相对），不要再加 scrollY/X
+        top: rect.bottom + 6,
+        left: rect.right - 120,
       })
     }
     document.addEventListener('selectionchange', handler)
